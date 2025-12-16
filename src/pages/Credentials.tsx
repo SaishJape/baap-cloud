@@ -5,15 +5,19 @@ import { Button } from '@/components/ui/button';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { toast } from 'sonner';
 
-const embedCode = `<script>
-  window.MY_CHATBOT_CONFIG = {
-    projectPublicId: "pb_xxxx",
-    apiBase: "https://api.baapservices.com"
-  };
-</script>
-<script src="https://api.baapservices.com/widget.js" defer></script>`;
+// This chatbot ID should ideally come from the user's data or configuration.
+// For now, using a placeholder or we can ask the user to input it if it differs per user.
+// The user request implied getting it from the chatbot ID in the curl command.
+const DEMO_CHATBOT_ID = "056389c8-7268-4e75-b7ca-9ab69f488b91";
+
+const getEmbedCode = (chatbotId: string) => `<iframe
+  src="${window.location.origin}/chatbot-widget/${chatbotId}"
+  style="position: fixed; bottom: 20px; right: 20px; width: 400px; height: 600px; border: none; z-index: 999999;"
+  title="Chatbot"
+></iframe>`;
 
 export default function Credentials() {
+  const embedCode = getEmbedCode(DEMO_CHATBOT_ID);
   const [copied, setCopied] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Database, Bot, Plus, ArrowRight, Settings2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Database, Bot, Plus, ArrowRight, Settings2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,42 +7,82 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-
-interface Chatbot {
-  id: string;
-  name: string;
-  documentsCount: number;
-  createdAt: Date;
-}
+import { useAuth } from '@/contexts/AuthContext';
+import { chatbotService, Chatbot } from '@/services/chatbotService';
 
 export default function Data() {
   const navigate = useNavigate();
+  const { userId, clientId } = useAuth();
   const [chatbotName, setChatbotName] = useState('');
-  const [chatbots, setChatbots] = useState<Chatbot[]>([
-    { id: '1', name: 'Product Support Bot', documentsCount: 5, createdAt: new Date() },
-    { id: '2', name: 'Sales Assistant', documentsCount: 3, createdAt: new Date() },
-  ]);
+  const [chatbots, setChatbots] = useState<Chatbot[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
-  const handleCreateChatbot = () => {
+  useEffect(() => {
+    fetchChatbots();
+  }, [userId, clientId]);
+
+  const fetchChatbots = async () => {
+    if (!userId || !clientId) return;
+    try {
+      setIsLoading(true);
+      const response = await chatbotService.getChatbots(userId, clientId);
+      // The API returns { data: [ { ... } ] } based on curl example.
+      // But my service returns response.data directly which IS the object containing "data": [...]
+      // Wait, in chatbotService.ts: return response.data;
+      // API: { success: true, ..., data: [ ... ] }
+      // So response.data is the array.
+      setChatbots(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch chatbots", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateChatbot = async () => {
     if (!chatbotName.trim()) {
       toast.error('Please enter a chatbot name');
       return;
     }
 
-    const newChatbot: Chatbot = {
-      id: Math.random().toString(36).substring(7),
-      name: chatbotName.trim(),
-      documentsCount: 0,
-      createdAt: new Date(),
-    };
+    const configId = localStorage.getItem('config_id');
+    if (!configId) {
+      toast.error("Please configure your model settings first.");
+      navigate('/config');
+      return;
+    }
 
-    setChatbots(prev => [...prev, newChatbot]);
-    setChatbotName('');
-    toast.success(`Chatbot "${newChatbot.name}" created`);
+    setIsCreating(true);
+    try {
+      const response = await chatbotService.createChatbot({
+        config_id: configId,
+        title: chatbotName.trim()
+      });
+
+      if (response.success || response.data) {
+        toast.success(`Chatbot "${chatbotName}" created`);
+        setChatbotName('');
+        fetchChatbots(); // Refresh list
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to create chatbot');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const handleAddData = (chatbot: Chatbot) => {
-    navigate(`/chatbot-data?name=${encodeURIComponent(chatbot.name)}`);
+  const handleAddData = (chatbot: Chatbot, e?: React.MouseEvent) => {
+    e?.stopPropagation(); // Prevent card click if button is clicked
+    // Pass ID and Name via URL params
+    navigate(`/chatbot-data?id=${chatbot.id}&name=${encodeURIComponent(chatbot.title)}`);
+  };
+
+  const handleCardClick = (chatbot: Chatbot) => {
+    // Navigate to chatbot details or data page.
+    // The user said "open that perticular chatbot".
+    // Re-using handleAddData logic for now as it's the main "view" for a chatbot
+    navigate(`/chatbot-data?id=${chatbot.id}&name=${encodeURIComponent(chatbot.title)}`);
   };
 
   return (
@@ -76,9 +116,10 @@ export default function Data() {
                 onChange={(e) => setChatbotName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateChatbot()}
                 className="flex-1"
+                disabled={isCreating}
               />
-              <Button onClick={handleCreateChatbot} className="shrink-0">
-                Create
+              <Button onClick={handleCreateChatbot} className="shrink-0" disabled={isCreating}>
+                {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
               </Button>
             </div>
           </CardContent>
@@ -88,7 +129,11 @@ export default function Data() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Your Chatbots</h2>
 
-          {chatbots.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center p-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : chatbots.length === 0 ? (
             <Card className="border border-dashed border-border">
               <CardContent className="py-12 text-center">
                 <Bot className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
@@ -103,6 +148,7 @@ export default function Data() {
                   className={cn(
                     "border border-border hover:border-foreground/20 transition-all cursor-pointer group"
                   )}
+                  onClick={() => handleCardClick(chatbot)}
                 >
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-4">
@@ -113,20 +159,22 @@ export default function Data() {
                         variant="ghost"
                         size="icon"
                         className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => { e.stopPropagation(); /* Settings logic later */ }}
                       >
                         <Settings2 className="w-4 h-4" />
                       </Button>
                     </div>
 
-                    <h3 className="font-semibold text-foreground mb-1">{chatbot.name}</h3>
+                    <h3 className="font-semibold text-foreground mb-1">{chatbot.title}</h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                      {chatbot.documentsCount} document{chatbot.documentsCount !== 1 ? 's' : ''} uploaded
+                      {/* We don't have document count in API response yet, handling purely mostly */}
+                      Config ID: {chatbot.config_id.substring(0, 8)}...
                     </p>
 
                     <Button
                       variant="outline"
                       className="w-full justify-between group-hover:bg-secondary"
-                      onClick={() => handleAddData(chatbot)}
+                      onClick={(e) => handleAddData(chatbot, e)}
                     >
                       Add Data
                       <ArrowRight className="w-4 h-4" />

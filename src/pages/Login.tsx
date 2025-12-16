@@ -1,37 +1,38 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Phone, ArrowRight, Sparkles } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Login() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
-  const validatePhone = (number: string) => {
-    const phoneRegex = /^[6-9]\d{9}$/;
-    return phoneRegex.test(number);
-  };
-
-  const handleSendOTP = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validatePhone(phone)) {
-      toast.error('Please enter a valid 10-digit Indian mobile number');
+
+    if (!email || !password) {
+      toast.error('Please enter both email and password');
       return;
     }
 
     setIsLoading(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    toast.success('OTP sent successfully!');
-    navigate('/otp', { state: { phone } });
-    setIsLoading(false);
+
+    try {
+      await login(email, password);
+      toast.success('Login successful!');
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -48,7 +49,7 @@ export default function Login() {
           <div className="inline-flex items-center gap-2 mb-4">
             <Sparkles className="w-8 h-8 text-accent" />
             <h1 className="text-3xl font-bold">
-              Baap<span className="text-accent">Services</span>
+              Baap<span className="text-accent">Cloud</span>
             </h1>
           </div>
           <p className="text-muted-foreground">AI Chatbot Management Platform</p>
@@ -57,45 +58,62 @@ export default function Login() {
         <Card className="border-0 shadow-elevated">
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-2xl">Welcome Back</CardTitle>
-            <CardDescription>Enter your phone number to continue</CardDescription>
+            <CardDescription>Sign in to your account</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSendOTP} className="space-y-6">
-              <div className="space-y-2">
-                <label htmlFor="phone" className="text-sm font-medium text-foreground">
-                  Phone Number
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="Enter 10-digit mobile number"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="pl-12"
-                    maxLength={10}
-                  />
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-medium text-foreground">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="name@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-12"
+                      required
+                    />
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  We'll send you a verification code
-                </p>
+
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-medium text-foreground">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pl-12"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
-              <Button 
-                type="submit" 
-                size="lg" 
+              <Button
+                type="submit"
+                size="lg"
                 className="w-full"
-                disabled={isLoading || phone.length !== 10}
+                disabled={isLoading}
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                    Sending OTP...
+                    Signing in...
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    Send OTP
+                    Sign In
                     <ArrowRight className="w-4 h-4" />
                   </span>
                 )}

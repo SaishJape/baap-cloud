@@ -12,6 +12,7 @@ import Data from "./pages/Data";
 import ChatbotData from "./pages/ChatbotData";
 import Credentials from "./pages/Credentials";
 import VoiceMode from "./pages/VoiceMode";
+import ChatbotWidget from "./pages/ChatbotWidget";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/chatbot-data" element={<ChatbotData />} />
             <Route path="/credentials" element={<Credentials />} />
             <Route path="/voice" element={<VoiceMode />} />
+            <Route path="/chatbot-widget/:chatbotId" element={<ChatbotWidget />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
