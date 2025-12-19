@@ -77,4 +77,12 @@ export const chatbotService = {
         });
         return response.data;
     },
+
+    askQuestion: async (chatbotId: string, question: string): Promise<any> => {
+        const response = await api.post('/chat/chat/ask', {
+            chatbot_id: chatbotId,
+            question: question
+        });
+        return response.data;
+    }
 };

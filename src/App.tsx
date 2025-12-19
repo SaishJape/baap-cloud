@@ -14,6 +14,10 @@ import Credentials from "./pages/Credentials";
 import VoiceMode from "./pages/VoiceMode";
 import ChatbotWidget from "./pages/ChatbotWidget";
 import NotFound from "./pages/NotFound";
+import WhatsAppDashboard from "./pages/whatsapp/Dashboard";
+import WhatsAppTemplates from "./pages/whatsapp/Templates";
+import WhatsAppCampaigns from "./pages/whatsapp/Campaigns";
+import WhatsAppNumbers from "./pages/whatsapp/Numbers";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +38,13 @@ const App = () => (
             <Route path="/credentials" element={<Credentials />} />
             <Route path="/voice" element={<VoiceMode />} />
             <Route path="/chatbot-widget/:chatbotId" element={<ChatbotWidget />} />
+
+            {/* WhatsApp Module Routes */}
+            <Route path="/whatsapp" element={<WhatsAppDashboard />} />
+            <Route path="/whatsapp/templates" element={<WhatsAppTemplates />} />
+            <Route path="/whatsapp/campaigns" element={<WhatsAppCampaigns />} />
+            <Route path="/whatsapp/numbers" element={<WhatsAppNumbers />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

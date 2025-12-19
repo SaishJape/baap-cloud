@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, FileText, X, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import { Upload, FileText, X, CheckCircle, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -287,14 +287,14 @@ export default function ChatbotData() {
               <CardContent>
                 <div className="bg-secondary p-4 rounded-lg relative group">
                   <code className="text-sm break-all font-mono block">
-                    {`<iframe src="${API_BASE_URL}/chatbot/iframe/${chatbot.id}" width="400" height="600" style="border:none; position:fixed; bottom:20px; right:20px; z-index:9999;"></iframe>`}
+                    {`<iframe src="${window.location.origin}/chatbot-widget/${chatbot.id}" width="400" height="600" style="border:none; position:fixed; bottom:20px; right:20px; z-index:9999;"></iframe>`}
                   </code>
                   <Button
                     variant="secondary"
                     size="sm"
                     className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => {
-                      navigator.clipboard.writeText(`<iframe src="${API_BASE_URL}/chatbot/iframe/${chatbot.id}" width="400" height="600" style="border:none; position:fixed; bottom:20px; right:20px; z-index:9999;"></iframe>`);
+                      navigator.clipboard.writeText(`<iframe src="${window.location.origin}/chatbot-widget/${chatbot.id}" width="400" height="600" style="border:none; position:fixed; bottom:20px; right:20px; z-index:9999;"></iframe>`);
                       toast.success("Copied to clipboard");
                     }}
                   >
@@ -306,19 +306,26 @@ export default function ChatbotData() {
           </div>
         </div>
 
-        {/* Preview Section */}
         <Card className="border border-border">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle>Preview</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`${window.location.origin}/chatbot-widget/${chatbot.id}`, '_blank')}
+            >
+              Test Chatbot
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </Button>
           </CardHeader>
           <CardContent>
-            <div className="border border-dashed border-gray-300 rounded-lg p-4 min-h-[400px] flex items-center justify-center bg-gray-50">
+            {/* <div className="border border-dashed border-gray-300 rounded-lg p-4 min-h-[400px] flex items-center justify-center bg-gray-50">
               <iframe
-                src={`${API_BASE_URL}/chatbot/iframe/${chatbot.id}`}
+                src={`${window.location.origin}/chatbot-widget/${chatbot.id}`}
                 title="Chatbot Preview"
                 className="w-full h-[500px] border rounded shadow-sm bg-white"
               />
-            </div>
+            </div> */}
           </CardContent>
         </Card>
 
