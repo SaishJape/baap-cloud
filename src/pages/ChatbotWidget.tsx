@@ -50,7 +50,7 @@ export default function ChatbotWidget() {
         const recognition = new SpeechRecognitionAPI();
         recognition.continuous = false;
         recognition.interimResults = true;
-        recognition.lang = 'en-US';
+        recognition.lang = 'en-IN';
 
         recognition.onresult = (event) => {
             if (!event.results[0].isFinal) return;
@@ -136,40 +136,58 @@ export default function ChatbotWidget() {
     };
 
     const speak = (text: string) => {
-        stopSpeaking(); // Ensure safety
+        stopSpeaking();
+
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1;
-        utterance.pitch = 1;
+
+        // Get all voices and prefer high-quality Indian English voices
+        // Prioritize "Natural" voices (available in Edge)
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice =
+            voices.find(v => v.name.includes('Natural') && v.name.includes('India')) ||
+            voices.find(v => v.name.includes('Google') && v.name.includes('India')) ||
+            voices.find(v => v.name.includes('Microsoft Heera')) ||
+            voices.find(v => v.name.includes('Microsoft Ravi')) ||
+            voices.find(v => v.lang === 'en-IN') ||
+            voices[0];
+
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
+        }
+
+        // Tuned for Natural voices
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1;       // full volume
+
+        // Natural pauses between sentences
+        utterance.text = text.replace(/\.(?=\s|$)/g, ". "); // add space after period
 
         utterance.onstart = () => {
             setIsSpeaking(true);
-            // Ensure listening is stopped while speaking
-            stopListening();
+            stopListening(); // stop mic while speaking
         };
 
         utterance.onend = () => {
             setIsSpeaking(false);
-            // Resume listening after speaking if still in voice mode
             if (voiceModeRef.current) {
                 setTimeout(() => {
                     try {
                         recognitionRef.current?.start();
                         setIsListening(true);
-                    } catch { /* ignore */ }
-                }, 200);
+                    } catch { }
+                }, 300); // small thinking pause
             }
         };
 
         utterance.onerror = () => {
             setIsSpeaking(false);
-            // Keep loop alive on error
-            if (voiceModeRef.current) {
-                try { recognitionRef.current?.start(); setIsListening(true); } catch { /* ignore */ }
-            }
         };
 
         window.speechSynthesis.speak(utterance);
     };
+
+
 
     const askAndHandleAnswer = async ({
         question,
@@ -202,7 +220,9 @@ export default function ChatbotWidget() {
                 },
                 body: JSON.stringify({
                     chatbot_id: chatbotId,
-                    question: trimmedQuestion
+                    question: mode === 'voice'
+                        ? `${trimmedQuestion}\n\n(Reply in a calm, friendly, natural human tone. Use simple words. Speak like a helpful Indian English assistant.)`
+                        : trimmedQuestion
                 })
             });
 

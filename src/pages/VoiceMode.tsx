@@ -79,7 +79,7 @@ export default function VoiceMode() {
       const recognition = new SpeechRecognition();
       recognition.continuous = true; // KEEP LISTENING until we manually stop
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = 'en-IN';
 
       recognition.onresult = (event: any) => {
         // Build full transcript from all results
@@ -103,7 +103,7 @@ export default function VoiceMode() {
             if (finalInput && !isSubmittingRef.current && sessionActiveRef.current) {
               performSubmit(finalInput);
             }
-          }, 1500); // 1.5s silence to trigger submit
+          }, 3000); // 3s silence to trigger submit
         }
       };
 
@@ -204,7 +204,7 @@ export default function VoiceMode() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chatbot_id: currentChatbot.id,
-          question: inputText
+          question: `${inputText}\n\n(Reply in a calm, friendly, natural human tone. Use simple words. Speak like a helpful Indian English assistant. Keep it warm and clear.)`
         })
       });
 
@@ -240,14 +240,16 @@ export default function VoiceMode() {
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9; // Slightly slower for clarity
+    utterance.pitch = 1.0; // Natural pitch
     // Voice Selection (Same as before)
     const voices = synthRef.current.getVoices();
     const preferredVoice =
-      voices.find(v => v.name.includes("Microsoft") && v.name.includes("India") && (v.name.includes("English") || v.lang === 'en-IN')) ||
-      voices.find(v => v.name.includes("Google") && v.name.includes("India") && (v.name.includes("English") || v.lang === 'en-IN')) ||
-      voices.find(v => (v.lang === 'en-IN' || v.name.includes('India')) && (v.name.includes("English") || v.lang.startsWith('en'))) ||
-      voices.find(v => v.name.includes("Microsoft") && v.name.includes("English")) ||
-      voices.find(v => v.lang.includes("en-US"));
+      voices.find(v => v.name.includes("Natural") && v.name.includes("India")) ||
+      voices.find(v => v.name.includes("Google") && v.name.includes("India")) ||
+      voices.find(v => v.name.includes("Microsoft Heera")) ||
+      voices.find(v => v.lang === 'en-IN') ||
+      voices.find(v => v.name.includes("English"));
     if (preferredVoice) utterance.voice = preferredVoice;
 
     utterance.onstart = () => setVoiceState('speaking');
