@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { MessageCircle, X, Send, User, Bot, Mic, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,15 @@ type SpeechRecognitionType = InstanceType<
     NonNullable<typeof window.SpeechRecognition | typeof window.webkitSpeechRecognition>
 >;
 
+// Helper for cleaning text (outsid component to avoid recreation)
+const cleanTextForSpeech = (text: string): string => {
+    return text
+        .replace(/[*#_`]/g, '') // Remove bold, italic, code ticks, headers
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove link URLs, keep text
+        .replace(/\n+/g, '. ') // Turn newlines into distinct pauses
+        .trim();
+};
+
 export default function ChatbotWidget() {
     const { chatbotId } = useParams();
     const [isOpen, setIsOpen] = useState(false);
@@ -30,25 +39,203 @@ export default function ChatbotWidget() {
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
+
+    // Voice state
+    const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+    const [lastError, setLastError] = useState<string | null>(null);
+
+    // Refs
     const scrollRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<SpeechRecognitionType | null>(null);
     const voiceModeRef = useRef(false);
     const voiceRequestInFlightRef = useRef(false);
 
+    // Initial scroll
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [messages, isOpen]);
 
-    const [lastError, setLastError] = useState<string | null>(null);
+    // Load voices
+    useEffect(() => {
+        const populateVoices = () => {
+            const voices = window.speechSynthesis.getVoices();
+            // Prioritize "Natural" voices (Edge), then Google voices (Chrome), then any English voice.
+            const preferredVoice =
+                voices.find(v => v.name.includes("Natural") && v.lang.startsWith("en")) ||
+                voices.find(v => v.name.includes("Google US English")) ||
+                voices.find(v => v.name.includes("Google") && v.lang.startsWith("en")) ||
+                voices.find(v => v.lang.startsWith("en-US")) ||
+                voices.find(v => v.lang.startsWith("en"));
 
+            if (preferredVoice) {
+                console.log("Selected voice:", preferredVoice.name);
+                setSelectedVoice(preferredVoice);
+            }
+        };
+
+        populateVoices();
+        window.speechSynthesis.onvoiceschanged = populateVoices;
+
+        return () => {
+            window.speechSynthesis.onvoiceschanged = null;
+        };
+    }, []);
+
+    const stopSpeaking = useCallback(() => {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+    }, []);
+
+    const stopListening = useCallback(() => {
+        try {
+            recognitionRef.current?.stop();
+        } catch { }
+        setIsListening(false);
+    }, []);
+
+    const stopVoiceMode = useCallback(() => {
+        voiceModeRef.current = false;
+        setIsVoiceMode(false);
+        stopSpeaking();
+        stopListening();
+    }, [stopSpeaking, stopListening]);
+
+    const speak = useCallback((text: string) => {
+        stopSpeaking(); // Ensure safety
+
+        const speechText = cleanTextForSpeech(text);
+        const utterance = new SpeechSynthesisUtterance(speechText);
+
+        if (selectedVoice) {
+            utterance.voice = selectedVoice;
+        }
+
+        // Slight tuning for natural feel
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+
+        utterance.onstart = () => {
+            setIsSpeaking(true);
+            // Ensure listening is stopped while speaking
+            stopListening();
+        };
+
+        utterance.onend = () => {
+            setIsSpeaking(false);
+            // Resume listening after speaking if still in voice mode
+            // Small delay to prevent mic picking up system audio tail
+            if (voiceModeRef.current) {
+                setTimeout(() => {
+                    if (voiceModeRef.current) {
+                        try {
+                            recognitionRef.current?.start();
+                            setIsListening(true);
+                        } catch { /* ignore */ }
+                    }
+                }, 200);
+            }
+        };
+
+        utterance.onerror = () => {
+            setIsSpeaking(false);
+            // Keep loop alive on error if still in voice mode
+            if (voiceModeRef.current) {
+                try { recognitionRef.current?.start(); setIsListening(true); } catch { /* ignore */ }
+            }
+        };
+
+        window.speechSynthesis.speak(utterance);
+    }, [selectedVoice, stopSpeaking, stopListening]);
+
+    const askAndHandleAnswer = useCallback(async ({
+        question,
+        mode,
+    }: {
+        question: string;
+        mode: 'text' | 'voice';
+    }) => {
+        if (!question.trim() || isLoading) return;
+
+        const trimmedQuestion = question.trim();
+
+        if (mode === 'text') {
+            const userMessage: Message = {
+                id: Date.now().toString(),
+                role: 'user',
+                content: trimmedQuestion,
+            };
+            setMessages((prev) => [...prev, userMessage]);
+            setInputValue('');
+        }
+
+        setIsLoading(true);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/chat/chat/ask`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    chatbot_id: chatbotId,
+                    question: trimmedQuestion
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch response');
+            }
+
+            const data = await response.json();
+
+            // Backend can return { answer } or { data: { answer } }
+            const answer =
+                (typeof data?.data?.answer === 'string' && data.data.answer.trim()) ||
+                (typeof data?.answer === 'string' && data.answer.trim()) ||
+                "I'm sorry, I couldn't understand that.";
+
+            if (mode === 'text') {
+                const botMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    role: 'assistant',
+                    content: answer,
+                };
+                setMessages((prev) => [...prev, botMessage]);
+            } else {
+                speak(answer);
+            }
+        } catch (error) {
+            console.error('Chat error:', error);
+            toast.error('Failed to send message');
+
+            const errorMsg = "Sorry, I'm having trouble connecting right now.";
+            if (mode === 'text') {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: (Date.now() + 1).toString(),
+                        role: 'assistant',
+                        content: errorMsg,
+                    },
+                ]);
+            } else {
+                speak(errorMsg);
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    }, [chatbotId, isLoading, speak]);
+
+    // Setup speech recognition
     useEffect(() => {
         const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognitionAPI) return;
 
         const recognition = new SpeechRecognitionAPI();
-        recognition.continuous = false;
+        recognition.continuous = false; // We handle the loop manually for better control
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
@@ -71,8 +258,10 @@ export default function ChatbotWidget() {
         recognition.onend = () => {
             setIsListening(false);
             // Restart conversation loop if active, idle, and not speaking.
+            // Using window.speechSynthesis.speaking as the most reliable source of truth
             if (voiceModeRef.current && !voiceRequestInFlightRef.current && !window.speechSynthesis.speaking) {
                 setTimeout(() => {
+                    // Check conditions again after delay
                     if (voiceModeRef.current && !voiceRequestInFlightRef.current && !window.speechSynthesis.speaking) {
                         try {
                             recognition.start();
@@ -105,7 +294,6 @@ export default function ChatbotWidget() {
 
             const msg = `Mic Error: ${error}`;
             setLastError(msg);
-            // toast.error(msg); // Optional: reduce toast spam if using inline error
         };
 
         recognitionRef.current = recognition;
@@ -114,142 +302,7 @@ export default function ChatbotWidget() {
             recognition.stop();
             recognitionRef.current = null;
         };
-    }, []);
-
-    const stopSpeaking = () => {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-    };
-
-    const stopListening = () => {
-        try {
-            recognitionRef.current?.stop();
-        } catch { }
-        setIsListening(false);
-    };
-
-    const stopVoiceMode = () => {
-        voiceModeRef.current = false;
-        setIsVoiceMode(false);
-        stopSpeaking();
-        stopListening();
-    };
-
-    const speak = (text: string) => {
-        stopSpeaking(); // Ensure safety
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1;
-        utterance.pitch = 1;
-
-        utterance.onstart = () => {
-            setIsSpeaking(true);
-            // Ensure listening is stopped while speaking
-            stopListening();
-        };
-
-        utterance.onend = () => {
-            setIsSpeaking(false);
-            // Resume listening after speaking if still in voice mode
-            if (voiceModeRef.current) {
-                setTimeout(() => {
-                    try {
-                        recognitionRef.current?.start();
-                        setIsListening(true);
-                    } catch { /* ignore */ }
-                }, 200);
-            }
-        };
-
-        utterance.onerror = () => {
-            setIsSpeaking(false);
-            // Keep loop alive on error
-            if (voiceModeRef.current) {
-                try { recognitionRef.current?.start(); setIsListening(true); } catch { /* ignore */ }
-            }
-        };
-
-        window.speechSynthesis.speak(utterance);
-    };
-
-    const askAndHandleAnswer = async ({
-        question,
-        mode,
-    }: {
-        question: string;
-        mode: 'text' | 'voice';
-    }) => {
-        if (!question.trim() || isLoading) return;
-
-        const trimmedQuestion = question.trim();
-
-        if (mode === 'text') {
-            const userMessage: Message = {
-                id: Date.now().toString(),
-                role: 'user',
-                content: trimmedQuestion,
-            };
-            setMessages((prev) => [...prev, userMessage]);
-        }
-        if (mode === 'text') setInputValue('');
-        setIsLoading(true);
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/chat/chat/ask`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    chatbot_id: chatbotId,
-                    question: trimmedQuestion
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch response');
-            }
-
-            const data = await response.json();
-
-            // Backend can return { answer } or { data: { answer } }
-            const answer =
-                (typeof data?.data?.answer === 'string' && data.data.answer.trim()) ||
-                (typeof data?.answer === 'string' && data.answer.trim()) ||
-                "I'm sorry, I couldn't understand that.";
-
-            if (mode === 'text') {
-                // Rule: typed Send => show as text only (no voice auto-play)
-                const botMessage: Message = {
-                    id: (Date.now() + 1).toString(),
-                    role: 'assistant',
-                    content: answer,
-                };
-                setMessages((prev) => [...prev, botMessage]);
-            } else {
-                // Rule: voice => speak only (do NOT display assistant text)
-                speak(answer);
-            }
-        } catch (error) {
-            console.error('Chat error:', error);
-            toast.error('Failed to send message');
-
-            if (mode === 'text') {
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: (Date.now() + 1).toString(),
-                        role: 'assistant',
-                        content: "Sorry, I'm having trouble connecting right now.",
-                    },
-                ]);
-            } else {
-                speak("Sorry, I'm having trouble connecting right now.");
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    }, [askAndHandleAnswer, stopVoiceMode]);
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -272,9 +325,6 @@ export default function ChatbotWidget() {
             setIsListening(false);
         }
     };
-
-    // If used inside an iframe, we might want the background to be transparent
-    // handled via standard CSS in index.html or body style, but here we control the widget container.
 
     return (
         <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-4 font-sans">
