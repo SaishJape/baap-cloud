@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Base URL for the main backend (ngrok)
-export const API_BASE_URL = 'http://127.0.0.1:8000';
+export const API_BASE_URL = 'http://baap-cloud-13-204-82-53.nip.io/';
 // AWS Auth URL
 export const AWS_AUTH_URL = 'https://dt1wp7hrm9.execute-api.ap-south-1.amazonaws.com/auth/api';
 
